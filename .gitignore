@@ -28,6 +28,3 @@ Assets/AssetStoreTools*
 # OS files
 .DS_Store
 Thumbs.db
-# Veľké FBX modely - len lokálne, nie v Gite
-Assets/Models/Player.fbx
-Assets/Models/ZombieMale.fbx

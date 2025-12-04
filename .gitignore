@@ -1,0 +1,30 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/
+MemoryCaptures/
+Recordings/
+
+# Rider / VS / JetBrains
+.vs/
+.idea/
+*.csproj
+*.sln
+*.user
+*.userprefs
+*.tmp
+*.pidb
+*.svd
+*.pdb
+*.mdb
+
+# Unity Asset Store
+Assets/AssetStoreTools*
+
+# OS files
+.DS_Store
+Thumbs.db

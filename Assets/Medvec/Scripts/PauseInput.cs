@@ -3,19 +3,33 @@ using UnityEngine.InputSystem;
 
 public class PauseInput : MonoBehaviour
 {
-    [SerializeField] private GameObject pausePanel;
+    [SerializeField] private PausePanel pausePanel; // referencuj priamo skript
 
-    private PausePanel pausePanelScript;
     private InputAction pauseAction;
 
     private void Awake()
     {
-        if (pausePanel != null)
-            pausePanelScript = pausePanel.GetComponent<PausePanel>();
+        // Ak si zabudneš nastaviť v Inspectorovi, nájde prvý PausePanel v scéne (aj skrytý)
+        if (pausePanel == null)
+            pausePanel = FindObjectOfType<PausePanel>(true);
 
-        // vytvorenie akcie len raz
-        pauseAction = new InputAction(type: InputActionType.Button,
-                                      binding: "<Keyboard>/p");
+        // vytvorenie akcie na kláves P
+        pauseAction = new InputAction(
+            type: InputActionType.Button,
+            binding: "<Keyboard>/p"
+        );
+    }
+
+    private void Start()
+    {
+        // na začiatku hra beží a panel je skrytý
+        Time.timeScale = 1f;
+
+        if (pausePanel != null && pausePanel.gameObject.activeSelf)
+            pausePanel.ResumeGame();
+
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
     }
 
     private void OnEnable()
@@ -32,7 +46,6 @@ public class PauseInput : MonoBehaviour
 
     private void OnDestroy()
     {
-        // korektné uvoľnenie akcie
         pauseAction.Dispose();
     }
 
@@ -41,16 +54,9 @@ public class PauseInput : MonoBehaviour
         if (pausePanel == null)
             return;
 
-        if (pausePanel.activeSelf)
-        {
-            if (pausePanelScript != null)
-                pausePanelScript.ReturnToGame();
-            else
-                pausePanel.SetActive(false);
-        }
+        if (pausePanel.IsPaused)
+            pausePanel.ResumeGame();
         else
-        {
-            pausePanel.SetActive(true);
-        }
+            pausePanel.PauseGame();
     }
 }

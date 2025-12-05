@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;               // kvôli Volume
+using UnityEngine.Rendering.Universal;    // ak používaš URP efekty
 
 public class CamScript : MonoBehaviour
 {
@@ -27,6 +29,16 @@ public class CamScript : MonoBehaviour
 
     [Tooltip("Rýchlosť prechodu medzi normálnou FOV a zoomom.")]
     public float zoomSpeed = 10f;
+
+    [Header("Post-process blur pri pauze")]
+    [Tooltip("Global Volume s blur/DepthOfField efektom. Zapne sa len pri pauze.")]
+    public Volume blurVolume;
+
+    [Tooltip("Hodnota blur intensity pri pauze (0–1).")]
+    [Range(0f, 1f)]
+    public float pausedBlurWeight = 1f;
+
+    private float defaultBlurWeight = 0f;
 
     private PlayerInputActions inputActions;
 
@@ -63,6 +75,10 @@ public class CamScript : MonoBehaviour
 
         if (thirdPersonCamera != null)
             defaultFOV_TPS = thirdPersonCamera.fieldOfView;
+
+        // uložíme si defaultnú hodnotu blurWeight (na začiatku žiadny alebo jemný blur)
+        if (blurVolume != null)
+            defaultBlurWeight = blurVolume.weight;
 
         ApplyCameraMode();
     }
@@ -124,6 +140,17 @@ public class CamScript : MonoBehaviour
 
     private void Update()
     {
+        // --- Blur podľa pauzy (pozadie rozmazané, HUD ostáva ostrý v Screen Space - Overlay) ---
+        if (blurVolume != null)
+        {
+            bool paused = PausePanel.IsGamePaused;   // static flag z PausePanel
+            blurVolume.weight = paused ? pausedBlurWeight : defaultBlurWeight;
+        }
+
+        // Ak je hra v pauze, hráčom nepohybujeme kamerou
+        if (PausePanel.IsGamePaused)
+            return;
+
         if (playerBody == null) return;
 
         Vector2 look = inputActions.Player.Look.ReadValue<Vector2>();
@@ -136,13 +163,13 @@ public class CamScript : MonoBehaviour
 
         if (isFirstPerson)
         {
-            // 💡 V FPS jemný pitch (Fallout-like)
+            // V FPS jemný pitch
             pitch -= mouseY * 0.4f;
             pitch = Mathf.Clamp(pitch, -pitchLimitFPS, pitchLimitFPS);
         }
         else
         {
-            // 💡 V TPS väčší pitch
+            // V TPS väčší pitch
             pitch -= mouseY;
             pitch = Mathf.Clamp(pitch, -pitchLimitTPS, pitchLimitTPS);
         }
@@ -163,7 +190,7 @@ public class CamScript : MonoBehaviour
             activeCam.fieldOfView = Mathf.Lerp(
                 activeCam.fieldOfView,
                 targetFOV,
-                Time.deltaTime * zoomSpeed
+                Time.unscaledDeltaTime * zoomSpeed   // keďže pri pauze je timeScale 0, ale Update sa už nevolá
             );
         }
     }

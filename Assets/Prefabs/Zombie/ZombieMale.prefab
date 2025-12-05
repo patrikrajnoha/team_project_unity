@@ -207,7 +207,7 @@ MonoBehaviour:
   currentHealth: 0
   hardHitThreshold: 30
   destroyDelay: 10
-  brainPrefab: {fileID: 5897771381848397613, guid: 9f48aacc7e08da74a87ef4680d2a8912, type: 3}
+  brainPrefab: {fileID: 6482155108855460816, guid: 9f48aacc7e08da74a87ef4680d2a8912, type: 3}
   brainForce: 4
 --- !u!136 &3298999121603213880
 CapsuleCollider:

@@ -1,33 +1,52 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 public class PausePanel : MonoBehaviour
 {
     [Header("UI References")]
-    [Tooltip("Sem potiahni ONLY objekt, ktorý je samotné pause menu (napr. Panel PauseMenu).")]
+    [Tooltip("Panel hlavného pause menu.")]
     [SerializeField] private GameObject pauseWindow;
 
-    [Tooltip("Sem môžeš (nemusíš) potiahnuť HUD, ak by si ho chcel pri pauze skrývať/zobrazovať.")]
+    [Tooltip("HUD ktorý počas pause môže (ale nemusí) ostať zapnutý.")]
     [SerializeField] private GameObject hud;
+
+    [Header("Settings Panel")]
+    [Tooltip("Tvoj settings panel, ktorý sa aktivuje po kliknutí na Settings.")]
+    [SerializeField] private GameObject settingsPanel;
 
     [Header("Main Menu")]
     [SerializeField] private string mainMenuSceneName = "MainMenu";
 
+    [Header("Post-process blur (optional)")]
+    [SerializeField] private Volume blurVolume;
+
     private bool isPaused = false;
     public bool IsPaused => isPaused;
 
+    public static bool IsGamePaused { get; private set; } = false;
+
     private void Start()
     {
-        // na začiatku je hra bežiaca, pause okno skryté, HUD zapnutý
         if (pauseWindow != null)
             pauseWindow.SetActive(false);
+
+        if (settingsPanel != null)
+            settingsPanel.SetActive(false);
 
         if (hud != null)
             hud.SetActive(true);
 
+        if (blurVolume != null)
+            blurVolume.weight = 0f;
+
         Time.timeScale = 1f;
+
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
+
+        IsGamePaused = false;
     }
 
     // ---------- PAUSE / RESUME ----------
@@ -35,14 +54,19 @@ public class PausePanel : MonoBehaviour
     public void PauseGame()
     {
         isPaused = true;
+        IsGamePaused = true;
 
         if (pauseWindow != null)
             pauseWindow.SetActive(true);
 
-        // AK nechceš, aby HUD mizol, na hud NESIAHAJ:
-        // if (hud != null) hud.SetActive(false);  // použij len ak chceš HUD schovať
+        if (settingsPanel != null)
+            settingsPanel.SetActive(false);
 
         Time.timeScale = 0f;
+
+        if (blurVolume != null)
+            blurVolume.weight = 1f;
+
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
     }
@@ -50,14 +74,21 @@ public class PausePanel : MonoBehaviour
     public void ResumeGame()
     {
         isPaused = false;
+        IsGamePaused = false;
 
         Time.timeScale = 1f;
 
         if (pauseWindow != null)
             pauseWindow.SetActive(false);
 
+        if (settingsPanel != null)
+            settingsPanel.SetActive(false);
+
         if (hud != null)
-            hud.SetActive(true);  // HUD nech je určite zapnutý
+            hud.SetActive(true);
+
+        if (blurVolume != null)
+            blurVolume.weight = 0f;
 
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
@@ -74,8 +105,25 @@ public class PausePanel : MonoBehaviour
 
     public void OpenSettings()
     {
-        // Tu si neskôr otvor svoj settings panel
-        Debug.Log("OpenSettings clicked – tu otvor svoj settings panel.");
+        if (pauseWindow != null)
+            pauseWindow.SetActive(false);
+
+        if (settingsPanel != null)
+            settingsPanel.SetActive(true);
+
+        Debug.Log("Settings panel opened.");
+    }
+
+    // Ak v nastaveniach máš tlačidlo „Back“
+    public void CloseSettings()
+    {
+        if (settingsPanel != null)
+            settingsPanel.SetActive(false);
+
+        if (pauseWindow != null)
+            pauseWindow.SetActive(true);
+
+        Debug.Log("Returned to pause menu.");
     }
 
     // ---------- BUTTON: BACK TO MAIN MENU ----------
@@ -86,6 +134,8 @@ public class PausePanel : MonoBehaviour
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+
+        IsGamePaused = false;
 
         SceneManager.LoadScene(mainMenuSceneName);
     }

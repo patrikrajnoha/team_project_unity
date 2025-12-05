@@ -49,6 +49,10 @@ public class PlayerHealth : MonoBehaviour, IDamageable
     [Tooltip("Efekt desaturácie obrazovky pri zásahu (DamageScreenDesaturate na Global Volume).")]
     public DamageScreenDesaturate damageScreenEffect;
 
+    [Header("Inventár")]
+    [Tooltip("Inventár hráča s medkitmi, mozgami, atď.")]
+    public PlayerInventory playerInventory;
+
     // New Input System actions
     private PlayerInputActions inputActions;
 
@@ -59,8 +63,15 @@ public class PlayerHealth : MonoBehaviour, IDamageable
         playerController = GetComponent<FPSPlayerController>();
         inputActions = new PlayerInputActions();
 
+        if (playerInventory == null)
+        {
+            playerInventory = GetComponent<PlayerInventory>();
+        }
+
+        // 🔹 ŠTART HODNOTY – 100 HP, 100 shield (vest + helmet)
         currentHealth = maxHealth;
-        currentShield = 0;
+        currentShield = vestHelmetShieldAmount;
+        armorPurchased = true;    // berieme, že hráč už má armor
         isDead = false;
 
         Debug.Log($"PlayerHealth.Awake: HP={currentHealth}, shield={currentShield}, gameOver={(gameOver ? gameOver.name : "NULL")}");
@@ -71,12 +82,17 @@ public class PlayerHealth : MonoBehaviour, IDamageable
     private void OnEnable()
     {
         inputActions.Player.Enable();
+
         inputActions.Player.CheatShield.performed += OnCheatShield;
+        inputActions.Player.Heal.performed += OnUseMedkit;
+  // 🔹 Q (alebo čo nastavíš)
     }
 
     private void OnDisable()
     {
         inputActions.Player.CheatShield.performed -= OnCheatShield;
+        inputActions.Player.Heal.performed -= OnUseMedkit;
+
         inputActions.Player.Disable();
     }
 
@@ -84,6 +100,53 @@ public class PlayerHealth : MonoBehaviour, IDamageable
     {
         Debug.Log("PlayerHealth.OnCheatShield: cheat aktivovaný.");
         GiveVestHelmetShieldCheat();
+    }
+
+    /// <summary>
+    /// Q – použitie medkitu, doplní HP na maxHealth (100).
+    /// </summary>
+    private void OnUseMedkit(InputAction.CallbackContext ctx)
+    {
+        if (!ctx.performed) return;
+
+        if (isDead)
+        {
+            Debug.Log("PlayerHealth.OnUseMedkit: hráč je mŕtvy, ignorujem.");
+            return;
+        }
+
+        // ak je pauza, ignoruj (nech si to hráč nevykliká v menu)
+        if (PausePanel.IsGamePaused)
+        {
+            Debug.Log("PlayerHealth.OnUseMedkit: hra je pauznutá, ignorujem.");
+            return;
+        }
+
+        if (currentHealth >= maxHealth)
+        {
+            Debug.Log("PlayerHealth.OnUseMedkit: HP je už na maxime, netreba heal.");
+            return;
+        }
+
+        if (playerInventory == null)
+        {
+            Debug.LogWarning("PlayerHealth.OnUseMedkit: playerInventory je NULL, nemám odkiaľ brať medkity.");
+            return;
+        }
+
+        // pokusíme sa minúť 1 medkit
+        bool used = playerInventory.TryUseMedkit();
+        if (!used)
+        {
+            Debug.Log("PlayerHealth.OnUseMedkit: žiadne medkity.");
+            return;
+        }
+
+        // doplníme zdravie na max
+        currentHealth = maxHealth;
+        Debug.Log($"PlayerHealth.OnUseMedkit: medkit použitý, HP doplnené na {currentHealth}.");
+
+        UpdateHUD();
     }
 
     public void TakeDamage(float amount)

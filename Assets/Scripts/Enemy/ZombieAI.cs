@@ -1,13 +1,12 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.AI;
 
 /// <summary>
-/// AI zombíka: chôdza, útoky, damage, smrť + headshot + drop mozgu.
+/// AI zombíka: chôdza za hráčom, útoky, damage, smrť + headshot + drop mozgu.
+/// Verzia bez NavMeshAgent – pohyb cez Rigidbody, aby kolidoval s prekážkami.
 /// </summary>
-[RequireComponent(typeof(NavMeshAgent))]
-[RequireComponent(typeof(Animator))]
 [RequireComponent(typeof(Rigidbody))]
+[RequireComponent(typeof(Animator))]
 public class ZombieAI : MonoBehaviour, IDamageable
 {
     // ---------------------- REFERENCES & AI ----------------------
@@ -16,9 +15,9 @@ public class ZombieAI : MonoBehaviour, IDamageable
     public Transform player;
 
     [Header("Ranges")]
-    public float sightRange  = 15f;
-    public float attackRange = 2.5f;
-    public float biteRange   = 1.2f;
+    public float sightRange  = 15f;   // vzdialenosť, kde si všimne hráča
+    public float attackRange = 2.5f;  // vzdialenosť, kde začne útok
+    public float biteRange   = 1.2f;  // blízky útok (uhryznutie)
 
     [Header("Movement")]
     public float walkSpeed = 1.2f;
@@ -30,11 +29,11 @@ public class ZombieAI : MonoBehaviour, IDamageable
     public int   hardAttackDamage   = 25;
     public int   biteDamage         = 35;
 
-    private NavMeshAgent agent;
     private Animator animator;
     private Rigidbody rb;
 
     private bool alreadyAttacked;
+    private Vector3 moveDirection = Vector3.zero;
 
     // animator parametre
     private static readonly int HashSpeed       = Animator.StringToHash("Speed");
@@ -44,10 +43,6 @@ public class ZombieAI : MonoBehaviour, IDamageable
     private static readonly int HashLightHit    = Animator.StringToHash("LightHit");
     private static readonly int HashHardHit     = Animator.StringToHash("HardHit");
     private static readonly int HashDie         = Animator.StringToHash("Die");
-
-    // pomocná property pre bezpečné používanie NavMeshAgentu
-    private bool HasAgentOnNavMesh =>
-        agent != null && agent.enabled && agent.isOnNavMesh;
 
     // ---------------------- HEALTH & DEATH ----------------------
     [Header("Health")]
@@ -69,28 +64,17 @@ public class ZombieAI : MonoBehaviour, IDamageable
 
     private bool brainDropped = false;
 
+    // -----------------------------------------------------------
     private void Awake()
     {
-        agent    = GetComponent<NavMeshAgent>();
         animator = GetComponent<Animator>();
         rb       = GetComponent<Rigidbody>();
 
-        if (agent != null)
-        {
-            agent.speed            = walkSpeed;
-            agent.stoppingDistance = attackRange * 0.8f;
-            agent.updateRotation   = true;
-            agent.updatePosition   = true;
-        }
-
-        // zaživa: žiadna fyzika, iba NavMesh
-        if (rb != null)
-        {
-            rb.isKinematic              = true;
-            rb.useGravity               = false;
-            rb.interpolation            = RigidbodyInterpolation.Interpolate;
-            rb.collisionDetectionMode   = CollisionDetectionMode.Continuous;
-        }
+        // Zombík je klasický dynamický Rigidbody – koliduje s prekážkami
+        rb.isKinematic            = false;
+        rb.useGravity             = true;
+        rb.interpolation          = RigidbodyInterpolation.Interpolate;
+        rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
 
         currentHealth = maxHealth;
         IsDead        = false;
@@ -108,19 +92,15 @@ public class ZombieAI : MonoBehaviour, IDamageable
 
     private void Update()
     {
-        if (IsDead)
-            return;
-
-        if (!HasAgentOnNavMesh)
-            return;
-
-        if (player == null)
-            return;
+        if (IsDead) return;
+        if (player == null) return;
 
         float distance = Vector3.Distance(transform.position, player.position);
 
         if (distance <= attackRange)
         {
+            // pri útoku sa prestane hýbať
+            moveDirection = Vector3.zero;
             AttackPlayer();
         }
         else if (distance <= sightRange)
@@ -132,37 +112,49 @@ public class ZombieAI : MonoBehaviour, IDamageable
             Idle();
         }
 
-        // rýchlosť pre blend Idle/Walk
-        float speed = agent.velocity.magnitude;
+        // rýchlosť pre animáciu – podľa smeru, nie fyziky
+        float targetSpeed = moveDirection.magnitude * walkSpeed;
+        float currentSpeed = animator.GetFloat(HashSpeed);
+        float speed = Mathf.Lerp(currentSpeed, targetSpeed, Time.deltaTime * 8f); // trochu vyhladené
         animator.SetFloat(HashSpeed, speed);
+
+    }
+
+    private void FixedUpdate()
+    {
+        if (IsDead) return;
+
+        if (moveDirection.sqrMagnitude > 0.0001f)
+        {
+            Vector3 newPos = rb.position + moveDirection * walkSpeed * Time.fixedDeltaTime;
+            rb.MovePosition(newPos);
+        }
     }
 
     // ---------------------- AI – pohyb a útok ----------------------
-    private void StopAgent()
-    {
-        if (!HasAgentOnNavMesh) return;
-
-        agent.isStopped = true;
-        agent.velocity  = Vector3.zero;
-    }
-
     private void ChasePlayer()
     {
-        if (!HasAgentOnNavMesh) return;
         if (player == null) return;
 
-        agent.isStopped = false;
-        agent.SetDestination(player.position);
+        Vector3 dir = player.position - transform.position;
+        dir.y = 0f;
+        if (dir.sqrMagnitude > 0.0001f)
+        {
+            dir.Normalize();
+            moveDirection = dir;
+
+            // otočenie k hráčovi
+            transform.rotation = Quaternion.LookRotation(dir);
+        }
     }
 
     private void Idle()
     {
-        StopAgent();
+        moveDirection = Vector3.zero;
     }
 
     private void AttackPlayer()
     {
-        if (!HasAgentOnNavMesh) return;
         if (player == null) return;
         if (alreadyAttacked) return;
 
@@ -209,7 +201,6 @@ public class ZombieAI : MonoBehaviour, IDamageable
 
         if (IsDead) yield break;
         if (player == null) yield break;
-        if (!HasAgentOnNavMesh) yield break;
 
         // hráč ušiel mimo range – netrafíme
         if (Vector3.Distance(transform.position, player.position) > attackRange + 0.5f)
@@ -225,9 +216,6 @@ public class ZombieAI : MonoBehaviour, IDamageable
     private void ResetAttack()
     {
         alreadyAttacked = false;
-
-        if (HasAgentOnNavMesh)
-            agent.isStopped = false;
     }
 
     // ---------------------- DAMAGE / HEALTH ----------------------
@@ -310,24 +298,10 @@ public class ZombieAI : MonoBehaviour, IDamageable
 
         Debug.Log($"[ZombAI] Die(headshot={headshot}) -> {name}", this);
 
-        // vypnutie NavMeshAgentu
-        if (agent != null && agent.enabled)
-        {
-            if (agent.isOnNavMesh)
-            {
-                agent.isStopped = true;
-                agent.velocity  = Vector3.zero;
-            }
-            agent.enabled = false;
-        }
-
-        // fyzika
-        if (rb != null)
-        {
-            rb.isKinematic            = false;
-            rb.useGravity             = true;
-            rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
-        }
+        // zastav pohyb
+        moveDirection      = Vector3.zero;
+        rb.linearVelocity        = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
 
         if (animator != null)
         {
@@ -336,7 +310,6 @@ public class ZombieAI : MonoBehaviour, IDamageable
 
             if (headshot)
             {
-                // priamo prehraj stav "Death Headshot" na Base Layeri
                 int deathHeadshotHash = Animator.StringToHash("Base Layer.Death Headshot");
 
                 if (animator.HasState(0, deathHeadshotHash))

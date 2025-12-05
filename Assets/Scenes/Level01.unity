@@ -17537,6 +17537,7 @@ MonoBehaviour:
   shieldIconTag: <sprite name=shield>
   gameOver: {fileID: 1155933303}
   damageScreenEffect: {fileID: 1864770232}
+  playerInventory: {fileID: 0}
 --- !u!114 &1287707677
 MonoBehaviour:
   m_ObjectHideFlags: 0

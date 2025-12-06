@@ -113,11 +113,10 @@ public class ZombieAI : MonoBehaviour, IDamageable
         }
 
         // rýchlosť pre animáciu – podľa smeru, nie fyziky
-        float targetSpeed = moveDirection.magnitude * walkSpeed;
+        float targetSpeed  = moveDirection.magnitude * walkSpeed;
         float currentSpeed = animator.GetFloat(HashSpeed);
-        float speed = Mathf.Lerp(currentSpeed, targetSpeed, Time.deltaTime * 8f); // trochu vyhladené
+        float speed        = Mathf.Lerp(currentSpeed, targetSpeed, Time.deltaTime * 8f); // trochu vyhladené
         animator.SetFloat(HashSpeed, speed);
-
     }
 
     private void FixedUpdate()
@@ -298,9 +297,15 @@ public class ZombieAI : MonoBehaviour, IDamageable
 
         Debug.Log($"[ZombAI] Die(headshot={headshot}) -> {name}", this);
 
+        // 🔹 KILL SCORE – 1 bod za každého zombíka s tagom "Zombie"
+        if (CompareTag("Zombie") && KillScoreManager.Instance != null)
+        {
+            KillScoreManager.Instance.AddKill();
+        }
+
         // zastav pohyb
         moveDirection      = Vector3.zero;
-        rb.linearVelocity        = Vector3.zero;
+        rb.linearVelocity  = Vector3.zero;
         rb.angularVelocity = Vector3.zero;
 
         if (animator != null)

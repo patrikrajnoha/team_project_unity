@@ -4,9 +4,23 @@ using TMPro;
 
 public class ZombiePortal : MonoBehaviour, IDamageable
 {
+    // --------- STATIC – spoločné pre všetky portály v scéne ---------
+    private static bool initialized = false;
+
+    private static int destroyedPortals = 0;
+
+    private static TMP_Text sharedGoalText;
+    private static string   sharedGoalTextFormat = "Defeat portals {0}/{1}";
+
+    // Jeden z portálov nastaví tento final portal (z Inspectoru)
+    private static GameObject sharedFinalPortal;
+
+    // ------------------ INSTANCE FIELDS (Inspector) ------------------
+
     [Header("Health")]
     [Tooltip("Maximálne zdravie portálu.")]
     public float maxHealth = 400f;
+
     [Tooltip("Aktuálne zdravie portálu (len na debug).")]
     public float currentHealth;
 
@@ -27,11 +41,15 @@ public class ZombiePortal : MonoBehaviour, IDamageable
     public int maxAliveZombies = 20;
 
     [Header("HUD")]
-    [Tooltip("TMP text pre cieľ hry (GameGoal_1).")]
+    [Tooltip("TMP text pre cieľ hry (GameGoal_1). Stačí nastaviť na jednom portáli.")]
     public TMP_Text goalText;
 
-    [Tooltip("Formát textu – {0} = aktuálny počet zničených portálov.")]
-    public string goalTextFormat = "Defeat portals {0}/1";
+    [Tooltip("Formát textu – {0} = zničené portály, {1} = všetky portály.")]
+    public string goalTextFormat = "Defeat portals {0}/{1}";
+
+    [Header("Final Portal")]
+    [Tooltip("Final portal objekt v scéne (deaktivovaný). Stačí priradiť na JEDNOM portáli.")]
+    public GameObject finalPortal;
 
     [Header("Efekty")]
     [Tooltip("VFX prefab pri zničení portálu (voliteľné).")]
@@ -46,28 +64,49 @@ public class ZombiePortal : MonoBehaviour, IDamageable
     [Tooltip("Zvuk pri zničení (voliteľné).")]
     public AudioClip destroyClip;
 
+    // ------------------ INTERNAL ------------------
     private float spawnTimer;
-    private bool isDestroyed = false;
+    private bool  isDestroyed = false;
 
     private readonly List<GameObject> aliveZombies = new List<GameObject>();
 
+    // ----------------------------------------------------------    
     private void Awake()
     {
         currentHealth = maxHealth;
+
+        // Reset statických premenných pri prvom portáli v scéne
+        if (!initialized)
+        {
+            initialized          = true;
+            destroyedPortals     = 0;
+            sharedGoalText       = null;
+            sharedGoalTextFormat = "Defeat portals {0}/{1}";
+            sharedFinalPortal    = null;
+        }
     }
 
     private void Start()
     {
-        // HUD – na začiatku 0/1
-        if (goalText != null)
+        // Nastav shared HUD text – stačí, keď goalText je priradený aspoň na jednom portáli
+        if (sharedGoalText == null && goalText != null)
         {
-            goalText.fontStyle &= ~FontStyles.Strikethrough;   // pre istotu zruš strikethrough
-            goalText.text = string.Format(goalTextFormat, 0);  // "Defeat portals 0/1"
+            sharedGoalText = goalText;
+            if (!string.IsNullOrEmpty(goalTextFormat))
+                sharedGoalTextFormat = goalTextFormat;
         }
+
+        // Nastav shared final portal – stačí priradiť na jednom portáli
+        if (sharedFinalPortal == null && finalPortal != null)
+        {
+            sharedFinalPortal = finalPortal;
+            sharedFinalPortal.SetActive(false); // istota, že je skrytý na začiatku
+        }
+
+        UpdateSharedHUD();
 
         // hneď na začiatku spawnni jedného zombíka
         SpawnZombie();
-
         spawnTimer = baseSpawnInterval;
     }
 
@@ -95,6 +134,8 @@ public class ZombiePortal : MonoBehaviour, IDamageable
         }
     }
 
+    // ------------------ SPAWN LOGIKA ------------------
+
     private void SpawnZombie()
     {
         if (zombiePrefab == null)
@@ -117,6 +158,8 @@ public class ZombiePortal : MonoBehaviour, IDamageable
         return Mathf.Lerp(minSpawnInterval, baseSpawnInterval, healthPercent);
     }
 
+    // ------------------ DAMAGE / DEATH ------------------
+
     public void TakeDamage(float amount)
     {
         if (isDestroyed)
@@ -135,6 +178,7 @@ public class ZombiePortal : MonoBehaviour, IDamageable
 
         if (currentHealth > 0f)
         {
+            // portál je poškodený – zrýchlime spawn
             float newInterval = GetCurrentSpawnInterval();
             float accelerated = newInterval * 0.5f;
             spawnTimer = Mathf.Min(spawnTimer, accelerated);
@@ -153,12 +197,15 @@ public class ZombiePortal : MonoBehaviour, IDamageable
 
         Debug.Log($"[ZombiePortal] {name} zničený!");
 
-        // HUD – 1/1 a preškrtnúť
-        if (goalText != null)
-        {
-            goalText.text = string.Format(goalTextFormat, 1); // "Defeat portals 1/1"
-            goalText.fontStyle |= FontStyles.Strikethrough;
-        }
+        // prestane sa počítať ako „Portal“
+        gameObject.tag = "Untagged";
+
+        // navýš globálny counter a updatni HUD
+        destroyedPortals++;
+        UpdateSharedHUD();
+
+        // skús aktivovať final portal, ak už žiadny Portal neexistuje
+        TryActivateFinalPortal();
 
         if (destroyClip != null && audioSource != null)
         {
@@ -170,6 +217,7 @@ public class ZombiePortal : MonoBehaviour, IDamageable
             Instantiate(destroyVfx, transform.position, Quaternion.identity);
         }
 
+        // vypni kolider a rendery (portál zmizne)
         Collider col = GetComponent<Collider>();
         if (col != null) col.enabled = false;
 
@@ -178,5 +226,50 @@ public class ZombiePortal : MonoBehaviour, IDamageable
             r.enabled = false;
 
         Destroy(gameObject, 2f);
+    }
+
+    // ------------------ STATIC POMOCNÉ METÓDY ------------------
+
+    /// <summary>
+    /// Celkový počet portálov = aktívne portály (tag "Portal") + zničené portály.
+    /// Funguje aj pri dynamickom spawnovaní.
+    /// </summary>
+    private static int GetTotalPortalsDynamic()
+    {
+        int active = GameObject.FindGameObjectsWithTag("Portal").Length;
+        return active + destroyedPortals;
+    }
+
+    private static void UpdateSharedHUD()
+    {
+        if (sharedGoalText == null) return;
+
+        int destroyed = destroyedPortals;
+        int total     = GetTotalPortalsDynamic();
+
+        if (total < destroyed)
+            total = destroyed;
+
+        sharedGoalText.text = string.Format(sharedGoalTextFormat, destroyed, total);
+
+        // Preškrtnutie, keď sú všetky portály preč
+        if (destroyed >= total && total > 0)
+            sharedGoalText.fontStyle |= FontStyles.Strikethrough;
+        else
+            sharedGoalText.fontStyle &= ~FontStyles.Strikethrough;
+    }
+
+    private static void TryActivateFinalPortal()
+    {
+        if (sharedFinalPortal == null) return;
+        if (sharedFinalPortal.activeSelf) return;
+
+        int activePortals = GameObject.FindGameObjectsWithTag("Portal").Length;
+
+        if (activePortals == 0)
+        {
+            sharedFinalPortal.SetActive(true);
+            Debug.Log("[ZombiePortal] All portals destroyed — final portal ACTIVATED.");
+        }
     }
 }
